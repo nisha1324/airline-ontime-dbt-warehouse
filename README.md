@@ -2,7 +2,7 @@
 
 A small, tested **star-schema warehouse** for Australian domestic airline punctuality, built with **dbt-core** on **DuckDB** from the federal government's open data. It's meant to be the trusted layer a BI team (Power BI, Tableau, a notebook) can connect to without re-learning the source's traps.
 
-> **Status: in progress, Part 1 of 5 done** (source, staging, profile). Next comes the star schema. See the [plan](#plan).
+> **Status: in progress, Part 2 of 5 done** (source and staging; star schema). Next come the metrics and the business answers. See the [plan](#plan).
 
 ## The business question
 
@@ -30,11 +30,47 @@ The government file stacks **four grains in one table**: each airline on each ro
 
 **So what for the business:** a dashboard built on the raw file would report three and a half times the real flight volume, and its route totals wouldn't reconcile with its national totals. The warehouse fixes this once, in tested SQL, so every report downstream gets the same answer.
 
+## What Part 2 built: a star schema with one grain per fact
+
+The four stacked grains become **two fact tables at their own grain** plus four shared dimensions, so no table mixes grains and every measure can be summed safely. Full detail, all generated from the build, is in [`results/STAR_SCHEMA.md`](results/STAR_SCHEMA.md).
+
+```mermaid
+erDiagram
+    dim_month   ||--o{ fct_route_month   : month_key
+    dim_airline ||--o{ fct_route_month   : airline_key
+    dim_route   ||--o{ fct_route_month   : route_key
+    dim_port    ||--o{ fct_route_month   : "departing_port_key"
+    dim_port    ||--o{ fct_route_month   : "arriving_port_key"
+    dim_month   ||--o{ fct_network_month : month_key
+    dim_airline ||--o{ fct_network_month : airline_key
+```
+
+| Table | One row per… | Rows | Use it for |
+|---|---|---|---|
+| `fct_route_month` | airline × directional route × month | 87,176 | route and airport analysis (the listed competitive routes) |
+| `fct_network_month` | airline × month (whole network) | 1,918 | airline and national totals |
+| `dim_airline` | airline, with `brand_family` for renames | 17 | carrier comparisons, long trends |
+| `dim_route` | directional route, with city pair, intrastate and capital-to-capital flags | 162 | route slicing; 81 city pairs |
+| `dim_port` | port, with state and IATA code; used twice (departing, arriving) | 45 | airport and state views |
+| `dim_month` | month, with Australian financial year (Jul–Jun) | 273 | calendar and FY reporting |
+
+Design decisions, each one tested:
+
+- **Route totals are rebuilt, not loaded.** "All airlines on a route" is a `SUM` over `fct_route_month`, so a route total always equals its airline breakdown. BITRE's own route totals disagree with their airline rows in 11 of 30,603 route-months; those stay in staging as a warning.
+- **The national total is the sum of the airline networks**, not BITRE's published national row. BITRE defines the industry total as all services of the reporting airlines, yet in 4 of 5 mismatching months the published row leaves out a newly reporting airline's whole network (Skytrans May 2023, Hinterland Mar–May 2024; Mar 2006 matches no single airline). The difference is at most **2.4% of flights and 0.19 points of on-time rate** (`audit_national_total` shows every month side by side). Summing the airline rows also means a dashboard's grand total always equals the sum of its airline bars. A dbt test fails the build if a future release opens a gap over 3% or moves the on-time rate by more than 0.5 points, so the decision gets revisited, not silently carried on.
+- **Renamed airlines keep their own rows, linked by `brand_family` with evidence.** Skywest and *Virgin Australia – ATR/F100 Operations* → *Virgin Australia Regional Airlines* (May 2013) comes from BITRE's [notes on the data](https://data.gov.au/data/dataset/domestic-airline-on-time-performance). Regional Express → Rex Airlines (Jul 2021) is inferred from the data: the same 30 routes are listed in the last month of one and the first month of the other. Skytrans and Skytrans Australia are **not** linked: there's a six-month gap and no published source.
+- **Readable, stable keys** for BI tools: `yyyymm` months, IATA route keys (`SYD-MEL`), port codes, airline slugs. They don't change when a rebuild adds a new airline or month.
+- **Nothing lost or double counted:** a test compares row counts and five measure totals per month between staging and each fact; others check every key against its dimension, the declared grain of each fact, that each route and its reverse share one city pair, and that an airline's routes never exceed its network.
+
+**So what for the business:** a travel manager can now ask "how did Qantas, Jetstar and Virgin Australia compare on Sydney–Melbourne in FY2025-26?" or "which Queensland airports have the most cancellations on the listed routes?" with plain joins and sums, and get numbers that reconcile with the airline and national totals. Part 4 exports the same tables for a Power BI model, so the dashboard inherits these rules instead of re-implementing them in DAX.
+
 ## How it's built
 
 ```
-data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──► staging ──► (Part 2) dims + facts ──► (Part 3) metrics/marts ──► Power BI / notebooks
-                    pinned, SHA-256 checked       read as text   typed, grain-labelled, defects flagged
+data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──► staging ──► dims + facts ──► (Part 3) metrics ──► Power BI / notebooks
+                    pinned, SHA-256             read as        typed,      one grain
+                    checked                     text           grain       per fact
+                                                               labelled
 ```
 
 | Layer | What it does | Where |
@@ -42,9 +78,10 @@ data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──►
 | Snapshot | The monthly CSV, gzipped deterministically (1.6 MB) with its SHA-256, licence and row count in `SNAPSHOT.json`. data.gov.au replaces the file in place every month, so the snapshot keeps the build reproducible; older snapshots live in git history. | [`data/snapshots/`](data/snapshots), [`scripts/download_data.py`](scripts/download_data.py) |
 | Source | dbt-duckdb reads the gzip directly; every column as text so typing happens in one place. | [`_bitre__sources.yml`](warehouse/models/staging/_bitre__sources.yml) |
 | Staging | `stg_bitre__otp_monthly`: one row per source row, typed, airline names cleaned through a seed, `row_grain` label, defect flags. Nothing dropped or "fixed". | [`stg_bitre__otp_monthly.sql`](warehouse/models/staging/stg_bitre__otp_monthly.sql), [`airline_names.csv`](warehouse/seeds/airline_names.csv) |
-| Tests | 42 dbt tests. **Structural rules fail the build:** unique keys, grain labels, "All Ports" on both ends or neither, no missing months, route names match ports, cleaned names don't merge two rows, an airline's routes never exceed its network. **Known source defects warn** and are counted in the profile. Plus 9 pytest tests, including a full rebuild that fails if the committed profile is stale. | [`warehouse/tests/`](warehouse/tests), [`tests/`](tests) |
+| Star schema | Two facts (`fct_route_month`, `fct_network_month`), four dimensions, and `audit_national_total` documenting the national-total choice. Seeds hold the port list (state, IATA code) and airline brand lineage with sources. | [`models/marts/`](warehouse/models/marts), [`models/audit/`](warehouse/models/audit), [`ports.csv`](warehouse/seeds/ports.csv), [`airline_brands.csv`](warehouse/seeds/airline_brands.csv) |
+| Tests | 123 dbt tests. **Structural rules fail the build:** unique keys and grains, every fact key in its dimension, facts conserve staging's rows and totals, "All Ports" on both ends or neither, no missing months, route names match ports, cleaned names don't merge two rows, routes within networks, city pairs, the national-total gap bound. **Known source defects warn** (6) and are counted in the profile. Plus 30 pytest tests, including a full rebuild that fails if either committed report is stale. | [`warehouse/tests/`](warehouse/tests), [`tests/`](tests) |
 
-Staging is materialised as tables, not views, so the `.duckdb` file is self-contained and any client can open it from any folder.
+Every model is materialised as a table, not a view, so the `.duckdb` file is self-contained and any client can open it from any folder.
 
 ## Data
 
@@ -60,7 +97,8 @@ pip install -r requirements.txt           # dbt-core 1.x, dbt-duckdb, duckdb, py
 
 python scripts/build.py                   # verify snapshot, then dbt build -> data/warehouse.duckdb
 python scripts/profile_source.py          # -> results/SOURCE_PROFILE.md
-pytest                                    # 9 tests (rebuilds the warehouse in a temp folder)
+python scripts/describe_schema.py         # -> results/STAR_SCHEMA.md
+pytest                                    # 30 tests (rebuilds the warehouse in a temp folder)
 
 python scripts/download_data.py --check   # has BITRE published a newer month?
 python scripts/download_data.py --update  # snapshot it, then rebuild
@@ -71,7 +109,7 @@ Or run dbt directly: `cd warehouse && dbt build`. The profile in `warehouse/prof
 ## Plan
 
 1. ✅ **Source, staging, profile.** Snapshot + download script, dbt source, typed and grain-labelled staging, 42 dbt tests, generated source profile.
-2. **Star schema.** `dim_airline` (with brand history, e.g. Regional Express → Rex Airlines in Jul 2021), `dim_port` (role-played as departing/arriving, with state), `dim_route`, `dim_month`; two facts at their own grains, `fct_route_month` (airline × route × month) and `fct_network_month` (airline × month), with relationship and reconciliation tests. Decide and document which national total to use.
+2. ✅ **Star schema.** `dim_airline` (brand history with sources), `dim_port` (role-played, with state), `dim_route` (with city pairs), `dim_month` (with Australian FY); `fct_route_month` and `fct_network_month` at their own grains; national total = sum of airline networks, documented in `audit_national_total`; 81 new dbt tests and 21 pytest tests.
 3. **Metrics and analysis.** Tested metric definitions (on-time rate = on-time ÷ flown, as a ratio of sums, not an average of ratios), then the business answers with charts: reliability by airline and route, the post-COVID recovery and the worst routes.
 4. **Power BI loading guide.** Export to Parquet, relationships (including the role-playing port dimension), DAX measures matching the dbt metrics, and a build checklist. The `.pbix` gets built on Windows.
 5. **CI and write-up.** GitHub Actions runs `dbt build` and `pytest` on every push; final README with recommendations and limitations.
@@ -80,8 +118,8 @@ Or run dbt directly: `cd warehouse && dbt build`. The profile in `warehouse/prof
 
 ```
 data/snapshots/        committed source snapshot + SNAPSHOT.json
-scripts/               download_data.py, build.py, profile_source.py
-warehouse/             the dbt project (models/, seeds/, tests/, profiles.yml)
+scripts/               download_data.py, build.py, profile_source.py, describe_schema.py
+warehouse/             the dbt project: models/staging, models/marts, models/audit, seeds/, tests/
 results/               generated reports
 tests/                 pytest
 ```
