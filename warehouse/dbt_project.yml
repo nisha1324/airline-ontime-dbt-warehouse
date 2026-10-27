@@ -19,12 +19,25 @@ models:
     # Tables, not views: a view would keep the relative path to the CSV, so the
     # .duckdb file would only work when opened from this folder. As tables it
     # is self-contained and any client (Python, DBeaver, Power BI) can read it.
-    staging:
-      +materialized: table
+    # The marts are small (<100k rows), so tables cost nothing here either.
+    +materialized: table
 
 seeds:
   airline_ontime:
-    +column_types:
-      reported_name: varchar
-      airline_name: varchar
-      cleaning_note: varchar
+    airline_names:
+      +column_types:
+        reported_name: varchar
+        airline_name: varchar
+        cleaning_note: varchar
+    airline_brands:
+      +column_types:
+        airline_name: varchar
+        brand_family: varchar
+        lineage_note: varchar
+        lineage_source: varchar
+    ports:
+      +column_types:
+        port_name: varchar
+        iata_code: varchar
+        state: varchar
+        is_capital_city: boolean

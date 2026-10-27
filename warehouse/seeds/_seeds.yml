@@ -12,3 +12,40 @@ seeds:
         data_tests: [unique, not_null]
       - name: airline_name
         data_tests: [not_null]
+
+  - name: airline_brands
+    description: >
+      One row per cleaned airline name. `brand_family` chains names that are
+      one continuing operation, so a long trend can follow the airline across
+      a rename or merger. Each link cites its evidence: BITRE's "Notes on
+      using this data" (https://data.gov.au/data/dataset/domestic-airline-on-time-performance,
+      resource otptimeserieswebnotes.txt) or continuity in the data itself.
+      Names without evidence are left as their own family.
+    columns:
+      - name: airline_name
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('airline_names')
+                field: airline_name
+      - name: brand_family
+        data_tests: [not_null]
+
+  - name: ports
+    description: >
+      The 45 ports BITRE publishes, with state/territory and the IATA code of
+      the main airport serving each one (BITRE publishes city names, not
+      airport codes). The code is the port's key in the warehouse.
+    columns:
+      - name: port_name
+        data_tests: [unique, not_null]
+      - name: iata_code
+        data_tests: [unique, not_null]
+      - name: state
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [ACT, NSW, NT, QLD, SA, TAS, VIC, WA]

@@ -1,0 +1,18 @@
+airline_name,brand_family,lineage_note,lineage_source
+Bonza,Bonza,,
+Hinterland,Hinterland,,
+Jetstar,Jetstar,,
+MacAir,MacAir,,
+Ozjet,Ozjet,,
+Qantas,Qantas,,
+QantasLink,QantasLink,,
+Regional Express,Rex,Reported as Regional Express until Jun 2021,"Inferred from the data: last month Jun 2021, and the same 30 routes are listed for Rex Airlines from Jul 2021"
+Rex Airlines,Rex,Reported as Rex Airlines from Jul 2021,"Inferred from the data: first month Jul 2021, same 30 routes as Regional Express in Jun 2021"
+Skytrans,Skytrans,,
+Skytrans Australia,Skytrans Australia,"Not linked to Skytrans: a 6-month gap (Jul-Dec 2025) and no published source",
+Skywest,Virgin Australia Regional Airlines,Merged into Virgin Australia Regional Airlines from May 2013,BITRE notes on using this data (otptimeserieswebnotes.txt)
+SmartLynx Australia,SmartLynx Australia,,
+Tigerair Australia,Tigerair Australia,"Tiger Airways until Jul 2013; BITRE already publishes the whole series under the new name",BITRE notes on using this data (otptimeserieswebnotes.txt)
+Virgin Australia,Virgin Australia,"Virgin Blue until May 2011; BITRE already publishes the whole series under the new name",BITRE notes on using this data (otptimeserieswebnotes.txt)
+Virgin Australia - ATR/F100 Operations,Virgin Australia Regional Airlines,"Skywest flying ATR/F100 aircraft for Virgin Australia, Nov 2011 - Apr 2013; merged into Virgin Australia Regional Airlines from May 2013",BITRE notes on using this data (otptimeserieswebnotes.txt)
+Virgin Australia Regional Airlines,Virgin Australia Regional Airlines,"Formed May 2013 from Skywest and Virgin Australia - ATR/F100 Operations; its ATR fleet moved to Virgin Australia in Jan 2016",BITRE notes on using this data (otptimeserieswebnotes.txt)

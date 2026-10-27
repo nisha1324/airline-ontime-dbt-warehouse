@@ -1,0 +1,46 @@
+port_name,iata_code,state,is_capital_city
+Adelaide,ADL,SA,true
+Albury,ABX,NSW,false
+Alice Springs,ASP,NT,false
+Armidale,ARM,NSW,false
+Ayers Rock,AYQ,NT,false
+Ballina,BNK,NSW,false
+Brisbane,BNE,QLD,true
+Broome,BME,WA,false
+Bundaberg,BDB,QLD,false
+Burnie,BWT,TAS,false
+Cairns,CNS,QLD,false
+Canberra,CBR,ACT,true
+Coffs Harbour,CFS,NSW,false
+Darwin,DRW,NT,true
+Devonport,DPO,TAS,false
+Dubbo,DBO,NSW,false
+Emerald,EMD,QLD,false
+Geraldton,GET,WA,false
+Gladstone,GLT,QLD,false
+Gold Coast,OOL,QLD,false
+Hamilton Island,HTI,QLD,false
+Hervey Bay,HVB,QLD,false
+Hobart,HBA,TAS,true
+Kalgoorlie,KGI,WA,false
+Karratha,KTA,WA,false
+Launceston,LST,TAS,false
+Mackay,MKY,QLD,false
+Melbourne,MEL,VIC,true
+Mildura,MQL,VIC,false
+Moranbah,MOV,QLD,false
+Mount Isa,ISA,QLD,false
+Newcastle,NTL,NSW,false
+Newman,ZNE,WA,false
+Orange,OAG,NSW,false
+Perth,PER,WA,true
+Port Hedland,PHE,WA,false
+Port Lincoln,PLO,SA,false
+Port Macquarie,PQQ,NSW,false
+Proserpine,PPP,QLD,false
+Rockhampton,ROK,QLD,false
+Sunshine Coast,MCY,QLD,false
+Sydney,SYD,NSW,true
+Tamworth,TMW,NSW,false
+Townsville,TSV,QLD,false
+Wagga Wagga,WGA,NSW,false
