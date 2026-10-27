@@ -1,0 +1,9 @@
+# Local DuckDB file; no server, no account. OTP_DUCKDB_PATH lets tests build
+# into a throwaway file.
+airline_ontime:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('OTP_DUCKDB_PATH', '../data/warehouse.duckdb') }}"
+      threads: 4

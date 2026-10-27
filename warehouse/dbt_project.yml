@@ -1,0 +1,30 @@
+name: airline_ontime
+version: "0.1.0"
+config-version: 2
+profile: airline_ontime
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target"]
+
+vars:
+  # Relative to this folder; run dbt from warehouse/ (scripts/build.py does).
+  otp_snapshot: "../data/snapshots/otp_time_series_web.csv.gz"
+
+models:
+  airline_ontime:
+    # Tables, not views: a view would keep the relative path to the CSV, so the
+    # .duckdb file would only work when opened from this folder. As tables it
+    # is self-contained and any client (Python, DBeaver, Power BI) can read it.
+    staging:
+      +materialized: table
+
+seeds:
+  airline_ontime:
+    +column_types:
+      reported_name: varchar
+      airline_name: varchar
+      cleaning_note: varchar

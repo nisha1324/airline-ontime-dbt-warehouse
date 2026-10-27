@@ -1,0 +1,14 @@
+version: 2
+
+seeds:
+  - name: airline_names
+    description: >
+      Maps every airline name as BITRE published it to one cleaned name.
+      Only case and spelling variants are merged here; rebrands such as
+      Regional Express -> Rex Airlines are kept apart (a brand history is a
+      dimension decision, not a typo fix).
+    columns:
+      - name: reported_name
+        data_tests: [unique, not_null]
+      - name: airline_name
+        data_tests: [not_null]

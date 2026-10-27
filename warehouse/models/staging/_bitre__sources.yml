@@ -1,0 +1,37 @@
+version: 2
+
+sources:
+  - name: bitre
+    description: >
+      Bureau of Infrastructure and Transport Research Economics (BITRE),
+      Domestic Airlines - On Time Performance, from data.gov.au (CC BY 3.0 AU).
+      Read straight from the committed gzipped snapshot; every column is read
+      as text so that staging does all the typing in one visible place.
+    tables:
+      - name: otp_monthly
+        description: >
+          One row per route (or "All Ports") x airline (or "All Airlines") x
+          month. Four grains share this one table; see stg_bitre__otp_monthly.
+        config:
+          external_location: "read_csv('{{ var('otp_snapshot') }}', header = true, all_varchar = true)"
+        columns:
+          - name: Route
+            data_tests: [not_null]
+          - name: Departing_Port
+            data_tests: [not_null]
+          - name: Arriving_Port
+            data_tests: [not_null]
+          - name: Airline
+            data_tests: [not_null]
+          - name: Year
+            data_tests: [not_null]
+          - name: Month_Num
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
+          - name: Sectors_Scheduled
+            data_tests: [not_null]
+          - name: Sectors_Flown
+            data_tests: [not_null]

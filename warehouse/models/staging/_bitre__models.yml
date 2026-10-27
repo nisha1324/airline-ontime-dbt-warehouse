@@ -1,0 +1,84 @@
+version: 2
+
+models:
+  - name: stg_bitre__otp_monthly
+    description: >
+      The BITRE file, typed and labelled. One row per source row, nothing
+      dropped. `row_grain` says which of the four stacked grains a row
+      belongs to; always filter on it before summing.
+    columns:
+      - name: otp_row_id
+        description: Hash of route, reported airline and month (the source's natural key).
+        data_tests: [unique, not_null]
+      - name: route_name
+        description: Departing-Arriving, or "All Ports-All Ports" for network totals.
+      - name: airline_reported
+        description: The airline name exactly as published.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('airline_names')
+                field: reported_name
+              config:
+                where: "airline_reported != 'All Airlines'"
+      - name: airline_name
+        description: >
+          Cleaned airline name (case and spelling variants merged, see seed
+          airline_names). Null on "All Airlines" rows.
+        data_tests:
+          - not_null:
+              config:
+                where: "row_grain in ('route_airline', 'network_airline')"
+      - name: month_start
+        description: First day of the reporting month.
+        data_tests: [not_null]
+      - name: row_grain
+        description: Which of the four grains stacked in the source this row is.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [route_airline, route_all_airlines, network_airline, network_all_airlines]
+      - name: sectors_scheduled
+        description: Flights scheduled (a sector is one take-off and landing).
+        data_tests: [not_null, non_negative]
+      - name: sectors_flown
+        data_tests: [not_null, non_negative]
+      - name: cancellations
+        description: Flights cancelled within 7 days of departure. Missing on 316 Qantas Group route rows (2005-2007).
+        data_tests: [non_negative]
+      - name: departures_on_time
+        description: Left the gate less than 15 minutes after schedule.
+        data_tests: [not_null, non_negative]
+      - name: arrivals_on_time
+        description: Reached the gate less than 15 minutes after schedule.
+        data_tests: [not_null, non_negative]
+      - name: departures_delayed
+        description: Missing on 5 Jetstar/Qantas route rows (Apr 2005, Sep-Oct 2007), the same reporting gap as cancellations.
+        data_tests:
+          - non_negative
+          - not_null:
+              config:
+                severity: warn
+      - name: arrivals_delayed
+        data_tests: [not_null, non_negative]
+      - name: is_schedule_balanced
+        description: scheduled = flown + cancelled. Null when cancellations are missing.
+        data_tests:
+          - not_false:
+              config:
+                severity: warn
+      - name: is_departures_balanced
+        description: flown = departed on time + departed late.
+        data_tests:
+          - not_false:
+              config:
+                severity: warn
+      - name: is_arrivals_balanced
+        description: >
+          flown = arrived on time + arrived late. Diverted flights count in
+          neither, so a small shortfall can be legitimate.
+        data_tests:
+          - not_false:
+              config:
+                severity: warn
