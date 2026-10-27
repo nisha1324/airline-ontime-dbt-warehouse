@@ -1,0 +1,14 @@
+{
+  "snapshot": "data/snapshots/otp_time_series_web.csv.gz",
+  "source_dataset": "https://data.gov.au/data/dataset/domestic-airline-on-time-performance",
+  "source_url": "https://data.gov.au/data/dataset/29128ebd-dbaa-4ff5-8b86-d9f30de56452/resource/cf663ed1-0c5e-497f-aea9-e74bfda9cf44/download/otp_time_series_web.csv",
+  "source_last_modified": "2026-10-22T23:37:36.991141",
+  "licence": "Creative Commons Attribution 3.0 Australia",
+  "attribution": "Bureau of Infrastructure and Transport Research Economics (BITRE)",
+  "downloaded": "2026-10-27T03:53Z",
+  "csv_bytes": 10172634,
+  "csv_sha256": "3a15f12bb7b8440e1772cd4f2eed4936b0459a271918233b0e534fbd2589d0bb",
+  "rows": 119970,
+  "first_month": "2004-01",
+  "last_month": "2026-09"
+}

@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.env
+data/raw/
+*.duckdb
+*.duckdb.wal
+# dbt
+warehouse/target/
+warehouse/dbt_packages/
+warehouse/logs/
+logs/
+.user.yml
