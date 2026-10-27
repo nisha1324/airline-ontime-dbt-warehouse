@@ -27,8 +27,9 @@ select
     airline_rows.sectors_scheduled as airline_rows_scheduled
 from published
 full join airline_rows using (route_name, month_start)
-where published.sectors_scheduled is distinct from airline_rows.sectors_scheduled
-   or published.sectors_flown is distinct from airline_rows.sectors_flown
-   or published.cancellations is distinct from airline_rows.cancellations
-   or published.arrivals_on_time is distinct from airline_rows.arrivals_on_time
-   or published.departures_on_time is distinct from airline_rows.departures_on_time
+-- rounded: sums of the fractional 2011 values pick up floating-point error
+where round(published.sectors_scheduled, 6)  is distinct from round(airline_rows.sectors_scheduled, 6)
+   or round(published.sectors_flown, 6)      is distinct from round(airline_rows.sectors_flown, 6)
+   or round(published.cancellations, 6)      is distinct from round(airline_rows.cancellations, 6)
+   or round(published.arrivals_on_time, 6)   is distinct from round(airline_rows.arrivals_on_time, 6)
+   or round(published.departures_on_time, 6) is distinct from round(airline_rows.departures_on_time, 6)

@@ -45,7 +45,7 @@ models:
       - name: sectors_flown
         data_tests: [not_null, non_negative]
       - name: cancellations
-        description: Flights cancelled within 7 days of departure. Missing on 316 Qantas Group route rows (2005-2007).
+        description: Flights cancelled within 7 days of departure. Missing on 316 Qantas Group route rows (2006-2007).
         data_tests: [non_negative]
       - name: departures_on_time
         description: Left the gate less than 15 minutes after schedule.
