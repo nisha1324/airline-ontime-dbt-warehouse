@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: audit_national_total
+    description: >
+      BITRE's published national row vs the warehouse national total (sum of
+      fct_network_month), by month. Documents the national-total decision;
+      not a reporting table.
+    columns:
+      - name: month_key
+        data_tests: [unique, not_null]
+      - name: published_scheduled
+        description: Null would mean a month with airline rows but no national row.
+        data_tests: [not_null]
+      - name: warehouse_scheduled
+        description: Null would mean a national row with no airline rows behind it.
+        data_tests: [not_null]

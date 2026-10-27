@@ -1,0 +1,184 @@
+version: 2
+
+# The star schema. Two facts at their own grains share the airline and month
+# dimensions; the route fact also uses dim_route and dim_port (twice, as the
+# departing and the arriving port). Keys are readable and stable across
+# rebuilds: yyyymm for months, IATA codes for ports and routes, a slug for
+# airlines.
+
+models:
+  - name: dim_month
+    description: One row per month, Jan 2004 to the latest month, with calendar and Australian financial-year (Jul-Jun) attributes.
+    columns:
+      - name: month_key
+        description: yyyymm as an integer, e.g. 202609.
+        data_tests: [unique, not_null]
+      - name: month_start
+        data_tests: [unique, not_null]
+      - name: financial_year
+        description: The year the financial year ends in (FY2025-26 = 2026).
+        data_tests: [not_null]
+      - name: financial_month_num
+        description: 1 = July ... 12 = June.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+                quote: false
+
+  - name: dim_port
+    description: One row per port on the published routes. Role-played in fct_route_month as departing and arriving port.
+    columns:
+      - name: port_key
+        description: IATA code of the main airport serving the port.
+        data_tests: [unique, not_null]
+      - name: port_name
+        data_tests: [unique, not_null]
+      - name: state
+        data_tests: [not_null]
+      - name: first_month_listed
+        description: First month the port appears on a listed route. Null would mean a seed port that never appears.
+        data_tests: [not_null]
+
+  - name: dim_route
+    description: One row per directional route. Both directions of a city pair share `city_pair_key`.
+    columns:
+      - name: route_key
+        description: Departing and arriving IATA codes, e.g. SYD-MEL.
+        data_tests: [unique, not_null]
+      - name: route_name
+        description: The route as BITRE names it, e.g. Sydney-Melbourne.
+        data_tests: [unique, not_null]
+      - name: departing_port_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_port')
+                field: port_key
+      - name: arriving_port_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_port')
+                field: port_key
+      - name: city_pair_key
+        description: The two IATA codes ordered by port name, the same for both directions.
+        data_tests: [not_null]
+      - name: is_intrastate
+        description: Both ports in the same state or territory.
+        data_tests: [not_null]
+
+  - name: dim_airline
+    description: >
+      One row per airline (cleaned name). Renamed or merged airlines keep
+      their own rows, as BITRE reported them; `brand_family` chains them,
+      with the evidence in `lineage_source`.
+    columns:
+      - name: airline_key
+        description: Lower-case slug of the airline name, e.g. virgin_australia.
+        data_tests: [unique, not_null]
+      - name: airline_name
+        data_tests: [unique, not_null]
+      - name: brand_family
+        data_tests: [not_null]
+      - name: first_month_reported
+        description: First month with a network row. Null would mean a seeded airline that never reports.
+        data_tests: [not_null]
+      - name: has_route_detail
+        description: False for airlines that report only a network total (e.g. MacAir, Hinterland, Skytrans).
+        data_tests: [not_null]
+
+  - name: fct_route_month
+    description: >
+      Grain: airline x directional route x month, the competitive routes
+      BITRE lists (about three quarters of national flights). Measures add
+      up across airlines, routes and months; route totals are a SUM here.
+      Never use it for airline or national totals: use fct_network_month.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [airline_key, route_key, month_key]
+    columns:
+      - name: route_month_id
+        data_tests: [unique, not_null]
+      - name: month_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_month')
+                field: month_key
+      - name: airline_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_airline')
+                field: airline_key
+      - name: route_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_route')
+                field: route_key
+      - name: departing_port_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_port')
+                field: port_key
+      - name: arriving_port_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_port')
+                field: port_key
+      - name: sectors_scheduled
+        data_tests: [not_null, non_negative]
+      - name: sectors_flown
+        data_tests: [not_null, non_negative]
+      - name: cancellations
+        description: Null on 316 Qantas Group rows (2006-07). Cancellation rates must skip those rows in both numerator and denominator.
+      - name: arrivals_on_time
+        data_tests: [not_null, non_negative]
+
+  - name: fct_network_month
+    description: >
+      Grain: airline x month, the airline's whole domestic network. The
+      national total is the SUM of this table (see audit_national_total for
+      why not the published national row).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [airline_key, month_key]
+    columns:
+      - name: network_month_id
+        data_tests: [unique, not_null]
+      - name: month_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_month')
+                field: month_key
+      - name: airline_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_airline')
+                field: airline_key
+      - name: sectors_scheduled
+        data_tests: [not_null, non_negative]
+      - name: sectors_flown
+        data_tests: [not_null, non_negative]
+      - name: cancellations
+        description: Complete at this grain (the missing values are on route rows only).
+        data_tests: [not_null, non_negative]
+      - name: arrivals_on_time
+        data_tests: [not_null, non_negative]
