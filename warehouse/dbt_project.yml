@@ -13,6 +13,10 @@ clean-targets: ["target"]
 vars:
   # Relative to this folder; run dbt from warehouse/ (scripts/build.py does).
   otp_snapshot: "../data/snapshots/otp_time_series_web.csv.gz"
+  # Volume floor for league tables (routes, airports, airlines on a route):
+  # about 10 scheduled flights a day on average over the period. See
+  # results/METRICS.md for the rankings at a lower floor.
+  ranking_min_flights_per_month: 300
 
 models:
   airline_ontime:

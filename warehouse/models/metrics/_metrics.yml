@@ -1,0 +1,155 @@
+version: 2
+
+# The metrics layer. Rates are ratios of sums, defined once in
+# macros/otp_metrics.sql; every table keeps the summed counts next to the
+# rates so a BI tool can re-aggregate them correctly. Tables at "x period"
+# grain compare the named windows in dim_comparison_period.
+
+models:
+  - name: dim_comparison_period
+    description: "The analysis windows: the long-run pre-COVID average (FY2004-05 to FY2018-19), FY2018-19, and the latest 12 months."
+    columns:
+      - name: period_key
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [long_run_pre_covid, pre_covid_fy19, latest_12m]
+      - name: months_in_period
+        data_tests: [not_null]
+
+  - name: met_national_month
+    description: National totals and rates by month, plus rolling 12-month rates (ratios of 12-month sums). The national total is the sum of airline networks.
+    columns:
+      - name: month_key
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_month')
+                field: month_key
+      - name: on_time_arrival_rate
+        data_tests: [not_null, is_rate]
+      - name: on_time_departure_rate
+        data_tests: [not_null, is_rate]
+      - name: cancellation_rate
+        data_tests: [not_null, is_rate]
+      - name: rolling_12m_on_time_arrival_rate
+        description: Null for the first 11 months (Jan-Nov 2004).
+        data_tests: [is_rate]
+      - name: rolling_12m_cancellation_rate
+        data_tests: [is_rate]
+
+  - name: met_brand_period
+    description: Airline reliability by brand family and comparison period, over each airline's whole network. Brands fly different networks; compare airlines on the same route with met_city_pair_brand_period.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [period_key, brand_family]
+    columns:
+      - name: period_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_comparison_period')
+                field: period_key
+      - name: on_time_arrival_rate
+        data_tests: [not_null, is_rate]
+      - name: cancellation_rate
+        data_tests: [not_null, is_rate]
+      - name: share_of_national_scheduled
+        data_tests: [is_rate]
+
+  - name: met_city_pair_period
+    description: Route reliability by city pair (both directions) and comparison period, on the listed competitive routes. `is_ranked` applies the volume floor; `months_below_national` counts months under the national on-time arrival rate.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [period_key, city_pair_key]
+    columns:
+      - name: period_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_comparison_period')
+                field: period_key
+      - name: on_time_arrival_rate
+        data_tests: [is_rate]
+      - name: on_time_departure_rate
+        data_tests: [is_rate]
+      - name: cancellation_rate
+        data_tests: [is_rate]
+      - name: is_ranked
+        data_tests: [not_null]
+
+  - name: met_city_pair_brand_period
+    description: Airlines compared on the same city pair, by comparison period. The fair airline comparison.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [period_key, city_pair_key, brand_family]
+    columns:
+      - name: on_time_arrival_rate
+        data_tests: [is_rate]
+      - name: cancellation_rate
+        data_tests: [is_rate]
+      - name: share_of_city_pair_scheduled
+        data_tests: [is_rate]
+
+  - name: met_departing_port_period
+    description: Airport reliability by departing port and comparison period, over the listed routes leaving it. On-time departure is the headline rate.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [period_key, port_key]
+    columns:
+      - name: port_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_port')
+                field: port_key
+      - name: on_time_departure_rate
+        data_tests: [is_rate]
+      - name: cancellation_rate
+        data_tests: [is_rate]
+
+unit_tests:
+  # Hand-worked: two airlines on one direction in Jan, the reverse
+  # direction in Feb with its cancellation count missing. Counts chosen so
+  # every expected rate is exact in binary floating point.
+  #   on-time arrival  = (84 + 6 + 102) / (96 + 24 + 136) = 192/256 = 0.75
+  #     (the average of the three row rates would be 0.625)
+  #   on-time departure = (90 + 12 + 122) / 256 = 224/256 = 0.875
+  #   cancellation     = (4 + 0) / (100 + 28) = 0.03125: the Feb row is out
+  #     of both sides (4/264 if it counted as zero cancellations)
+  #   Jan city-pair rate 90/120 = 0.75 < national 0.80 -> below
+  #   Feb 102/136 = 0.75 > national 0.70 -> not below
+  #   264 scheduled < 300 x 2 months -> not ranked
+  - name: city_pair_rates_are_ratios_of_sums_and_skip_missing_cancellations
+    model: met_city_pair_period
+    given:
+      - input: ref('fct_route_month')
+        rows:
+          - {month_key: 202501, airline_key: a, route_key: AAA-BBB, sectors_scheduled: 100, sectors_flown: 96, arrivals_on_time: 84, departures_on_time: 90, cancellations: 4}
+          - {month_key: 202501, airline_key: b, route_key: AAA-BBB, sectors_scheduled: 28, sectors_flown: 24, arrivals_on_time: 6, departures_on_time: 12, cancellations: 0}
+          - {month_key: 202502, airline_key: a, route_key: BBB-AAA, sectors_scheduled: 136, sectors_flown: 136, arrivals_on_time: 102, departures_on_time: 122, cancellations: null}
+      - input: ref('dim_route')
+        rows:
+          - {route_key: AAA-BBB, city_pair_key: AAA-BBB, city_pair_name: Aaa - Bbb, is_intrastate: true, is_capital_to_capital: false}
+          - {route_key: BBB-AAA, city_pair_key: AAA-BBB, city_pair_name: Aaa - Bbb, is_intrastate: true, is_capital_to_capital: false}
+      - input: ref('dim_comparison_period')
+        rows:
+          - {period_key: test, first_month_key: 202501, last_month_key: 202502, months_in_period: 2}
+      - input: ref('met_national_month')
+        rows:
+          - {month_key: 202501, on_time_arrival_rate: 0.80}
+          - {month_key: 202502, on_time_arrival_rate: 0.70}
+    expect:
+      rows:
+        - {period_key: test, city_pair_key: AAA-BBB, airlines: 2, months_listed: 2, sectors_scheduled: 264, sectors_flown: 256, cancellation_base: 128, rows_missing_cancellations: 1, on_time_arrival_rate: 0.75, on_time_departure_rate: 0.875, cancellation_rate: 0.03125, months_below_national: 1, is_ranked: false}
