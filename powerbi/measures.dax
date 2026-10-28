@@ -1,0 +1,302 @@
+// DAX measures for the airline on-time Power BI model.
+//
+// How to use: in Power BI Desktop open DAX query view, paste this whole file
+// and click Run. The EVALUATE queries at the end print the values to compare
+// with powerbi/CHECKS.md. Then click "Update model with changes" to add every
+// measure to the model (DEFINE MEASURE only lives in the query until then).
+//
+// The rules mirror warehouse/macros/otp_metrics.sql:
+//   * every rate is a ratio of sums: DIVIDE(SUM, SUM), never an average of
+//     per-row or per-month percentages;
+//   * on-time rates divide by sectors flown; the cancellation rate divides by
+//     sectors scheduled on rows that HAVE a cancellation count. 316 route rows
+//     (Qantas Group, 2006-07) have none, so they leave both sides. ISBLANK is
+//     used, not "= BLANK()", because in DAX 0 = BLANK() is true and months
+//     with zero cancellations would drop out too;
+//   * airline and national figures come from fct_network_month; route and
+//     airport figures from fct_route_month (listed routes only). Never add
+//     the two facts together.
+//
+// Table names are the Power Query names in POWERBI_GUIDE.md: the dbt names,
+// plus 'Departing Port' and 'Arriving Port' (dim_port loaded twice).
+
+DEFINE
+
+    // ---- Whole networks: airline and national (fct_network_month) --------
+
+    MEASURE fct_network_month[Flights Scheduled] =
+        SUM ( fct_network_month[sectors_scheduled] )
+    MEASURE fct_network_month[Flights Flown] =
+        SUM ( fct_network_month[sectors_flown] )
+    MEASURE fct_network_month[Arrivals On Time] =
+        SUM ( fct_network_month[arrivals_on_time] )
+    MEASURE fct_network_month[Departures On Time] =
+        SUM ( fct_network_month[departures_on_time] )
+    MEASURE fct_network_month[Cancellations] =
+        SUM ( fct_network_month[cancellations] )
+    MEASURE fct_network_month[Cancellation Base] =
+        CALCULATE (
+            [Flights Scheduled],
+            KEEPFILTERS ( NOT ISBLANK ( fct_network_month[cancellations] ) )
+        )
+
+    MEASURE fct_network_month[On-time Arrival %] =
+        DIVIDE ( [Arrivals On Time], [Flights Flown] )
+    MEASURE fct_network_month[On-time Departure %] =
+        DIVIDE ( [Departures On Time], [Flights Flown] )
+    MEASURE fct_network_month[Cancellation %] =
+        DIVIDE ( [Cancellations], [Cancellation Base] )
+
+    // Rolling 12 months ending at the latest month in context: the ratio of
+    // 12-month sums, like met_national_month. Blank until 12 months exist.
+    MEASURE fct_network_month[Rolling 12m On-time Arrival %] =
+        VAR LastMonth = MAX ( dim_month[month_start] )
+        VAR Last12 =
+            FILTER (
+                ALL ( dim_month ),
+                dim_month[month_start] > EDATE ( LastMonth, -12 )
+                    && dim_month[month_start] <= LastMonth
+            )
+        RETURN
+            IF ( COUNTROWS ( Last12 ) = 12, CALCULATE ( [On-time Arrival %], Last12 ) )
+    MEASURE fct_network_month[Rolling 12m Cancellation %] =
+        VAR LastMonth = MAX ( dim_month[month_start] )
+        VAR Last12 =
+            FILTER (
+                ALL ( dim_month ),
+                dim_month[month_start] > EDATE ( LastMonth, -12 )
+                    && dim_month[month_start] <= LastMonth
+            )
+        RETURN
+            IF ( COUNTROWS ( Last12 ) = 12, CALCULATE ( [Cancellation %], Last12 ) )
+
+    // ---- Listed routes: route and airport (fct_route_month) --------------
+
+    MEASURE fct_route_month[Route Flights Scheduled] =
+        SUM ( fct_route_month[sectors_scheduled] )
+    MEASURE fct_route_month[Route Flights Flown] =
+        SUM ( fct_route_month[sectors_flown] )
+    MEASURE fct_route_month[Route Arrivals On Time] =
+        SUM ( fct_route_month[arrivals_on_time] )
+    MEASURE fct_route_month[Route Departures On Time] =
+        SUM ( fct_route_month[departures_on_time] )
+    MEASURE fct_route_month[Route Cancellations] =
+        SUM ( fct_route_month[cancellations] )
+    MEASURE fct_route_month[Route Cancellation Base] =
+        CALCULATE (
+            [Route Flights Scheduled],
+            KEEPFILTERS ( NOT ISBLANK ( fct_route_month[cancellations] ) )
+        )
+
+    MEASURE fct_route_month[Route On-time Arrival %] =
+        DIVIDE ( [Route Arrivals On Time], [Route Flights Flown] )
+    MEASURE fct_route_month[Route On-time Departure %] =
+        DIVIDE ( [Route Departures On Time], [Route Flights Flown] )
+    MEASURE fct_route_month[Route Cancellation %] =
+        DIVIDE ( [Route Cancellations], [Route Cancellation Base] )
+
+    // ---- Comparison periods (dim_comparison_period, no relationships) ----
+    // The periods overlap (FY2018-19 sits inside the long run), so the table
+    // can't filter dim_month through a relationship. Each Period measure
+    // reads the one selected period and filters month_key to its window.
+    // Blank unless exactly one period is in context (a slicer, or
+    // period_label on rows or columns).
+
+    MEASURE dim_comparison_period[Period Months] =
+        SELECTEDVALUE ( dim_comparison_period[months_in_period] )
+
+    MEASURE fct_network_month[Period Flights Scheduled] =
+        VAR FirstKey = SELECTEDVALUE ( dim_comparison_period[first_month_key] )
+        VAR LastKey = SELECTEDVALUE ( dim_comparison_period[last_month_key] )
+        RETURN
+            IF (
+                NOT ISBLANK ( FirstKey ),
+                CALCULATE (
+                    [Flights Scheduled],
+                    KEEPFILTERS ( dim_month[month_key] >= FirstKey && dim_month[month_key] <= LastKey )
+                )
+            )
+    MEASURE fct_network_month[Period On-time Arrival %] =
+        VAR FirstKey = SELECTEDVALUE ( dim_comparison_period[first_month_key] )
+        VAR LastKey = SELECTEDVALUE ( dim_comparison_period[last_month_key] )
+        RETURN
+            IF (
+                NOT ISBLANK ( FirstKey ),
+                CALCULATE (
+                    [On-time Arrival %],
+                    KEEPFILTERS ( dim_month[month_key] >= FirstKey && dim_month[month_key] <= LastKey )
+                )
+            )
+    MEASURE fct_network_month[Period On-time Departure %] =
+        VAR FirstKey = SELECTEDVALUE ( dim_comparison_period[first_month_key] )
+        VAR LastKey = SELECTEDVALUE ( dim_comparison_period[last_month_key] )
+        RETURN
+            IF (
+                NOT ISBLANK ( FirstKey ),
+                CALCULATE (
+                    [On-time Departure %],
+                    KEEPFILTERS ( dim_month[month_key] >= FirstKey && dim_month[month_key] <= LastKey )
+                )
+            )
+    MEASURE fct_network_month[Period Cancellation %] =
+        VAR FirstKey = SELECTEDVALUE ( dim_comparison_period[first_month_key] )
+        VAR LastKey = SELECTEDVALUE ( dim_comparison_period[last_month_key] )
+        RETURN
+            IF (
+                NOT ISBLANK ( FirstKey ),
+                CALCULATE (
+                    [Cancellation %],
+                    KEEPFILTERS ( dim_month[month_key] >= FirstKey && dim_month[month_key] <= LastKey )
+                )
+            )
+
+    MEASURE fct_route_month[Period Route Flights Scheduled] =
+        VAR FirstKey = SELECTEDVALUE ( dim_comparison_period[first_month_key] )
+        VAR LastKey = SELECTEDVALUE ( dim_comparison_period[last_month_key] )
+        RETURN
+            IF (
+                NOT ISBLANK ( FirstKey ),
+                CALCULATE (
+                    [Route Flights Scheduled],
+                    KEEPFILTERS ( dim_month[month_key] >= FirstKey && dim_month[month_key] <= LastKey )
+                )
+            )
+    MEASURE fct_route_month[Period Route On-time Arrival %] =
+        VAR FirstKey = SELECTEDVALUE ( dim_comparison_period[first_month_key] )
+        VAR LastKey = SELECTEDVALUE ( dim_comparison_period[last_month_key] )
+        RETURN
+            IF (
+                NOT ISBLANK ( FirstKey ),
+                CALCULATE (
+                    [Route On-time Arrival %],
+                    KEEPFILTERS ( dim_month[month_key] >= FirstKey && dim_month[month_key] <= LastKey )
+                )
+            )
+    MEASURE fct_route_month[Period Route On-time Departure %] =
+        VAR FirstKey = SELECTEDVALUE ( dim_comparison_period[first_month_key] )
+        VAR LastKey = SELECTEDVALUE ( dim_comparison_period[last_month_key] )
+        RETURN
+            IF (
+                NOT ISBLANK ( FirstKey ),
+                CALCULATE (
+                    [Route On-time Departure %],
+                    KEEPFILTERS ( dim_month[month_key] >= FirstKey && dim_month[month_key] <= LastKey )
+                )
+            )
+    MEASURE fct_route_month[Period Route Cancellation %] =
+        VAR FirstKey = SELECTEDVALUE ( dim_comparison_period[first_month_key] )
+        VAR LastKey = SELECTEDVALUE ( dim_comparison_period[last_month_key] )
+        RETURN
+            IF (
+                NOT ISBLANK ( FirstKey ),
+                CALCULATE (
+                    [Route Cancellation %],
+                    KEEPFILTERS ( dim_month[month_key] >= FirstKey && dim_month[month_key] <= LastKey )
+                )
+            )
+
+    // The league-table volume floor: on average at least 300 scheduled
+    // flights a month over the period (ranking_min_flights_per_month in
+    // dbt_project.yml; change both together). Blank when there's no traffic.
+    MEASURE fct_network_month[Period Meets Floor] =
+        VAR Flights = [Period Flights Scheduled]
+        RETURN
+            IF ( NOT ISBLANK ( Flights ), Flights >= 300 * [Period Months] )
+    MEASURE fct_route_month[Period Route Meets Floor] =
+        VAR Flights = [Period Route Flights Scheduled]
+        RETURN
+            IF ( NOT ISBLANK ( Flights ), Flights >= 300 * [Period Months] )
+
+// ---- Check queries: compare with powerbi/CHECKS.md -----------------------
+// Result columns get short lowercase names so they can't be confused with
+// the measures of the same meaning.
+
+// 1. National by period
+EVALUATE
+SUMMARIZECOLUMNS (
+    dim_comparison_period[sort_order],
+    dim_comparison_period[period_label],
+    "flights", [Period Flights Scheduled],
+    "on-time arrivals", [Period On-time Arrival %],
+    "on-time departures", [Period On-time Departure %],
+    "cancelled", [Period Cancellation %]
+)
+ORDER BY dim_comparison_period[sort_order]
+
+// 2. Rolling 12 months (Nov 2004 is blank, so it has no row)
+EVALUATE
+SUMMARIZECOLUMNS (
+    dim_month[month_key],
+    dim_month[month_label],
+    TREATAS ( { 200411, 200412, 202303, 202609 }, dim_month[month_key] ),
+    "on-time arrivals", [Rolling 12m On-time Arrival %],
+    "cancelled", [Rolling 12m Cancellation %]
+)
+ORDER BY dim_month[month_key]
+
+// 3. Brand families, FY2018-19 vs latest 12 months
+EVALUATE
+SUMMARIZECOLUMNS (
+    dim_airline[brand_family],
+    dim_comparison_period[sort_order],
+    dim_comparison_period[period_label],
+    TREATAS ( { "pre_covid_fy19", "latest_12m" }, dim_comparison_period[period_key] ),
+    "flights", [Period Flights Scheduled],
+    "on-time arrivals", [Period On-time Arrival %],
+    "cancelled", [Period Cancellation %],
+    "meets floor", [Period Meets Floor]
+)
+ORDER BY dim_airline[brand_family], dim_comparison_period[sort_order]
+
+// 4. Brisbane - Melbourne by airline, latest 12 months
+EVALUATE
+SUMMARIZECOLUMNS (
+    dim_airline[brand_family],
+    TREATAS ( { "BNE-MEL" }, dim_route[city_pair_key] ),
+    TREATAS ( { "latest_12m" }, dim_comparison_period[period_key] ),
+    "flights", [Period Route Flights Scheduled],
+    "on-time arrivals", [Period Route On-time Arrival %],
+    "cancelled", [Period Route Cancellation %]
+)
+ORDER BY [flights] DESC
+
+// 5. Departing airports above the floor, latest 12 months
+EVALUATE
+FILTER (
+    SUMMARIZECOLUMNS (
+        'Departing Port'[port_name],
+        TREATAS ( { "latest_12m" }, dim_comparison_period[period_key] ),
+        "flights", [Period Route Flights Scheduled],
+        "on-time departures", [Period Route On-time Departure %],
+        "meets floor", [Period Route Meets Floor]
+    ),
+    [meets floor]
+)
+ORDER BY [on-time departures]
+
+// 6. The missing-cancellations trap, FY2006-07 routes
+EVALUATE
+FILTER (
+    SUMMARIZECOLUMNS (
+        dim_airline[brand_family],
+        TREATAS ( { "FY2006-07" }, dim_month[financial_year_label] ),
+        "rows missing cancellations",
+            CALCULATE ( COUNTROWS ( fct_route_month ), ISBLANK ( fct_route_month[cancellations] ) ),
+        "cancelled", [Route Cancellation %],
+        "cancelled if blanks count as zero", DIVIDE ( [Route Cancellations], [Route Flights Scheduled] )
+    ),
+    [rows missing cancellations] > 0
+)
+ORDER BY dim_airline[brand_family]
+
+// 7. Totals and the volume floor
+EVALUATE
+ROW (
+    "national flights, all months", [Flights Scheduled],
+    "listed-route flights, all months", [Route Flights Scheduled],
+    "city pairs above the floor, latest 12 months",
+        CALCULATE (
+            COUNTROWS ( FILTER ( VALUES ( dim_route[city_pair_key] ), [Period Route Meets Floor] ) ),
+            TREATAS ( { "latest_12m" }, dim_comparison_period[period_key] )
+        )
+)
