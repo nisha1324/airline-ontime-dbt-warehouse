@@ -62,6 +62,8 @@ models:
         data_tests: [not_null, is_rate]
       - name: share_of_national_scheduled
         data_tests: [is_rate]
+      - name: is_ranked
+        data_tests: [not_null]
 
   - name: met_city_pair_period
     description: Route reliability by city pair (both directions) and comparison period, on the listed competitive routes. `is_ranked` applies the volume floor; `months_below_national` counts months under the national on-time arrival rate.

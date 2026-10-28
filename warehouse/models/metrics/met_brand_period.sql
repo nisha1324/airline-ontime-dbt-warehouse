@@ -52,6 +52,8 @@ select
     {{ otp_rates() }},
     summed.sectors_scheduled
         / sum(summed.sectors_scheduled) over (partition by summed.period_key)
-                                                     as share_of_national_scheduled
+                                                     as share_of_national_scheduled,
+    {{ is_ranked('summed.sectors_scheduled', 'period.months_in_period') }}
+                                                     as is_ranked
 from summed
 join {{ ref('dim_comparison_period') }} as period using (period_key)
