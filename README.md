@@ -2,7 +2,7 @@
 
 A small, tested **star-schema warehouse** for Australian domestic airline punctuality, built with **dbt-core** on **DuckDB** from the federal government's open data. It's meant to be the trusted layer a BI team (Power BI, Tableau, a notebook) can connect to without re-learning the source's traps.
 
-> **Status: in progress, Part 3 of 5 done** (source and staging; star schema; metrics and business answers). Next comes the Power BI loading guide. See the [plan](#plan).
+> **Status: in progress, Part 4 of 5 done** (source and staging; star schema; metrics and business answers; Power BI model and guide). Next comes CI and the final write-up. See the [plan](#plan).
 
 ## The business question
 
@@ -91,10 +91,26 @@ A tested **metrics layer** sits on the star schema: the three rates are defined 
 
 Caveats: on time means within 15 minutes of schedule (BITRE's definition), so it says nothing about longer delays. Route and airport figures cover only the listed competitive routes (about three quarters of flights). The floor-sensitivity check in the report shows which routes join the rankings at a lower floor (e.g. Hamilton Island–Sydney, 64.5% on time on 1,474 flights).
 
+## What Part 4 built: a Power BI model that matches the warehouse
+
+Power BI Desktop only runs on Windows, so this part prepares everything the report needs and a step-by-step guide; the `.pbix` itself gets built on a Windows machine. Everything is in [`powerbi/`](powerbi), and the guide is [`powerbi/POWERBI_GUIDE.md`](powerbi/POWERBI_GUIDE.md).
+
+- **The star schema as Parquet** (7 files, 2.5 MB, committed so no Python is needed on Windows). Power Query reads them with `Parquet.Document`. The export reads each file back and checks its row count, schema, null counts and column totals against the warehouse, and stops if anything differs; [`MANIFEST.json`](powerbi/data/MANIFEST.json) records those figures.
+- **The model:** seven single-direction relationships. The port dimension is loaded twice (`Departing Port`, `Arriving Port`), so both roles can be sliced without `USERELATIONSHIP`. `dim_month` isn't marked as a date table (it has one row per month, not per day), and `dim_comparison_period` stays disconnected because its windows overlap.
+- **31 DAX measures** in [`measures.dax`](powerbi/measures.dax), written to the same rules as the dbt macro: ratio-of-sums rates, airline and national figures from the network fact only, a cancellation base that leaves out rows with no count (`ISBLANK`, since `0 = BLANK()` is true in DAX), rolling 12-month rates and period measures, and the same 300-flights-a-month floor for league tables. Paste the file into DAX query view and one click adds them all.
+- **Check values** in [`CHECKS.md`](powerbi/CHECKS.md): 7 queries at the end of `measures.dax`, with the answers Power BI should return (to two decimal places). Each answer is computed from the Parquet files with the DAX's logic, and a test checks it against the dbt metrics models.
+
+The traps this guards against are real. The clearest is in the check values: in FY2006-07, a plain `DIVIDE(SUM(cancellations), SUM(sectors_scheduled))` reports Jetstar's route cancellation rate as **0.46%**, but the correct figure is **0.57%**. The plain version treats 141 rows with no cancellation count as "nothing cancelled", which understates the rate by about a fifth.
+
+What isn't done yet: the DAX hasn't been run inside Power BI, because there's no Windows machine here. The tests check it statically (every measure it uses is defined, every table and column exists in the export, the floor matches dbt, one check query per section of `CHECKS.md`), and the check queries confirm it on the first build. Report screenshots come after that.
+
+**So what for the business:** the dashboard inherits the warehouse's rules instead of re-implementing them, and anyone can confirm it does in a few minutes, by running the check queries. A travel manager reading "Qantas 88.4% vs Jetstar 59.3% on Brisbane–Melbourne" in Power BI sees the same number as the SQL report, so the booking-policy discussion is about the decision, not about whose figure is right.
+
 ## How it's built
 
 ```
-data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──► staging ──► dims + facts ──► metrics ──► Power BI / notebooks
+data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──► staging ──► dims + facts ──► metrics ──► notebooks
+                                                                                   └──► Parquet ──► Power BI
                     pinned, SHA-256             read as        typed,      one grain
                     checked                     text           grain       per fact
                                                                labelled
@@ -107,7 +123,8 @@ data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──►
 | Staging | `stg_bitre__otp_monthly`: one row per source row, typed, airline names cleaned through a seed, `row_grain` label, defect flags. Nothing dropped or "fixed". | [`stg_bitre__otp_monthly.sql`](warehouse/models/staging/stg_bitre__otp_monthly.sql), [`airline_names.csv`](warehouse/seeds/airline_names.csv) |
 | Star schema | Two facts (`fct_route_month`, `fct_network_month`), four dimensions, and `audit_national_total` documenting the national-total choice. Seeds hold the port list (state, IATA code) and airline brand lineage with sources. | [`models/marts/`](warehouse/models/marts), [`models/audit/`](warehouse/models/audit), [`ports.csv`](warehouse/seeds/ports.csv), [`airline_brands.csv`](warehouse/seeds/airline_brands.csv) |
 | Metrics | `otp_metrics.sql` defines the three rates once, as ratios of sums, with missing cancellation counts left out of both sides. `dim_comparison_period` names the windows. Five `met_*` models keep the summed counts next to the rates, so a BI tool can re-aggregate them, plus an `is_ranked` volume floor (`ranking_min_flights_per_month`). `scripts/analyse.py` turns them into the report and charts. | [`macros/otp_metrics.sql`](warehouse/macros/otp_metrics.sql), [`models/metrics/`](warehouse/models/metrics), [`results/METRICS.md`](results/METRICS.md) |
-| Tests | 165 dbt data tests and 1 dbt unit test. **Structural rules fail the build:** unique keys and grains, every fact key in its dimension, facts conserve staging's rows and totals, "All Ports" on both ends or neither, no missing months, route names match ports, cleaned names don't merge two rows, routes within networks, city pairs, the national-total gap bound, every metrics table adds back to its fact in every period, the rolling window is exactly 12 months, and rates stay within 0..1. The unit test feeds hand-worked rows through the city-pair model (ratio of sums vs average of ratios; a missing cancellation count). **Known source defects warn** (6) and are counted in the profile. Plus 39 pytest tests: they recompute rates straight from staging rows, and a full rebuild fails if any committed report or chart is stale. | [`warehouse/tests/`](warehouse/tests), [`tests/`](tests) |
+| Tests | 165 dbt data tests and 1 dbt unit test. **Structural rules fail the build:** unique keys and grains, every fact key in its dimension, facts conserve staging's rows and totals, "All Ports" on both ends or neither, no missing months, route names match ports, cleaned names don't merge two rows, routes within networks, city pairs, the national-total gap bound, every metrics table adds back to its fact in every period, the rolling window is exactly 12 months, and rates stay within 0..1. The unit test feeds hand-worked rows through the city-pair model (ratio of sums vs average of ratios; a missing cancellation count). **Known source defects warn** (6) and are counted in the profile. Plus 55 pytest tests: they recompute rates straight from staging rows, check the Power BI files against the warehouse and the dbt metrics, and a full rebuild fails if any committed report, chart, Parquet file or check value is stale. | [`warehouse/tests/`](warehouse/tests), [`tests/`](tests) |
+| Power BI | The star schema exported to Parquet and checked on read-back, a manifest, 31 DAX measures matching the dbt metrics, 7 check queries with expected values, and the build guide. | [`powerbi/`](powerbi), [`export_powerbi.py`](scripts/export_powerbi.py), [`powerbi_checks.py`](scripts/powerbi_checks.py) |
 
 Every model is materialised as a table, not a view, so the `.duckdb` file is self-contained and any client can open it from any folder.
 
@@ -127,7 +144,9 @@ python scripts/build.py                   # verify snapshot, then dbt build -> d
 python scripts/profile_source.py          # -> results/SOURCE_PROFILE.md
 python scripts/describe_schema.py         # -> results/STAR_SCHEMA.md
 python scripts/analyse.py                 # -> results/METRICS.md + results/charts/*.png
-pytest                                    # 39 tests (rebuilds the warehouse in a temp folder)
+python scripts/export_powerbi.py          # -> powerbi/data/*.parquet + MANIFEST.json
+python scripts/powerbi_checks.py          # -> powerbi/CHECKS.md
+pytest                                    # 55 tests (rebuilds the warehouse in a temp folder)
 
 python scripts/download_data.py --check   # has BITRE published a newer month?
 python scripts/download_data.py --update  # snapshot it, then rebuild
@@ -140,16 +159,18 @@ Or run dbt directly: `cd warehouse && dbt build`. The profile in `warehouse/prof
 1. ✅ **Source, staging, profile.** Snapshot + download script, dbt source, typed and grain-labelled staging, 42 dbt tests, generated source profile.
 2. ✅ **Star schema.** `dim_airline` (brand history with sources), `dim_port` (role-played, with state), `dim_route` (with city pairs), `dim_month` (with Australian FY); `fct_route_month` and `fct_network_month` at their own grains; national total = sum of airline networks, documented in `audit_national_total`; 81 new dbt tests and 21 pytest tests.
 3. ✅ **Metrics and analysis.** The rates defined once in a macro (ratios of sums), 5 metric models over 3 comparison windows, 42 new dbt data tests and a unit test, 9 new pytest tests; a generated report with 4 charts answering the recovery, airline, route and airport questions.
-4. **Power BI loading guide.** Export to Parquet, relationships (including the role-playing port dimension), DAX measures matching the dbt metrics, and a build checklist. The `.pbix` gets built on Windows.
+4. ✅ **Power BI model and guide.** Parquet export checked on read-back, 7 relationships (the port dimension loaded once per role), 31 DAX measures matching the dbt metrics, 7 check queries with tested expected values, a build guide with 4 report pages; 16 new pytest tests. The `.pbix` and screenshots get built on Windows.
 5. **CI and write-up.** GitHub Actions runs `dbt build` and `pytest` on every push; final README with recommendations and limitations.
 
 ## Repo layout
 
 ```
 data/snapshots/        committed source snapshot + SNAPSHOT.json
-scripts/               download_data.py, build.py, profile_source.py, describe_schema.py, analyse.py
+scripts/               download_data.py, build.py, profile_source.py, describe_schema.py, analyse.py,
+                       export_powerbi.py, powerbi_checks.py
 warehouse/             the dbt project: models/staging, models/marts, models/metrics, models/audit,
                        macros/, seeds/, tests/
 results/               generated reports and charts/
+powerbi/               Parquet export + manifest, measures.dax, CHECKS.md, POWERBI_GUIDE.md
 tests/                 pytest
 ```
