@@ -1,0 +1,480 @@
+{
+  "source": "data/warehouse.duckdb (dbt build)",
+  "tables": {
+    "fct_route_month": {
+      "rows": 87176,
+      "columns": [
+        {
+          "name": "route_month_id",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "month_key",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 17573160725
+        },
+        {
+          "name": "airline_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "route_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "departing_port_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "arriving_port_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "sectors_scheduled",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 8681901.0
+        },
+        {
+          "name": "sectors_flown",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 8468437.0
+        },
+        {
+          "name": "cancellations",
+          "type": "DOUBLE",
+          "nulls": 316,
+          "sum": 213455.0
+        },
+        {
+          "name": "departures_on_time",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 6845724.972
+        },
+        {
+          "name": "departures_delayed",
+          "type": "DOUBLE",
+          "nulls": 5,
+          "sum": 1622745.028
+        },
+        {
+          "name": "arrivals_on_time",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 6769054.1374
+        },
+        {
+          "name": "arrivals_delayed",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 1699365.8626
+        },
+        {
+          "name": "is_cancellations_missing",
+          "type": "BOOLEAN",
+          "nulls": 0
+        },
+        {
+          "name": "has_fractional_counts",
+          "type": "BOOLEAN",
+          "nulls": 0
+        },
+        {
+          "name": "is_schedule_balanced",
+          "type": "BOOLEAN",
+          "nulls": 316
+        },
+        {
+          "name": "is_departures_balanced",
+          "type": "BOOLEAN",
+          "nulls": 5
+        },
+        {
+          "name": "is_arrivals_balanced",
+          "type": "BOOLEAN",
+          "nulls": 0
+        }
+      ]
+    },
+    "fct_network_month": {
+      "rows": 1918,
+      "columns": [
+        {
+          "name": "network_month_id",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "month_key",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 386486494
+        },
+        {
+          "name": "airline_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "sectors_scheduled",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 11499305.5
+        },
+        {
+          "name": "sectors_flown",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 11243487.0
+        },
+        {
+          "name": "cancellations",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 255838.5
+        },
+        {
+          "name": "departures_on_time",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 9169457.4564
+        },
+        {
+          "name": "departures_delayed",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 2074043.5436
+        },
+        {
+          "name": "arrivals_on_time",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 9047456.3519
+        },
+        {
+          "name": "arrivals_delayed",
+          "type": "DOUBLE",
+          "nulls": 0,
+          "sum": 2196016.6481
+        },
+        {
+          "name": "has_fractional_counts",
+          "type": "BOOLEAN",
+          "nulls": 0
+        },
+        {
+          "name": "is_schedule_balanced",
+          "type": "BOOLEAN",
+          "nulls": 0
+        },
+        {
+          "name": "is_departures_balanced",
+          "type": "BOOLEAN",
+          "nulls": 0
+        },
+        {
+          "name": "is_arrivals_balanced",
+          "type": "BOOLEAN",
+          "nulls": 0
+        }
+      ]
+    },
+    "dim_airline": {
+      "rows": 17,
+      "columns": [
+        {
+          "name": "airline_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "airline_name",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "brand_family",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "reported_names",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "first_month_reported",
+          "type": "DATE",
+          "nulls": 0
+        },
+        {
+          "name": "last_month_reported",
+          "type": "DATE",
+          "nulls": 0
+        },
+        {
+          "name": "months_reported",
+          "type": "BIGINT",
+          "nulls": 0,
+          "sum": 1918
+        },
+        {
+          "name": "routes_listed",
+          "type": "BIGINT",
+          "nulls": 0,
+          "sum": 719
+        },
+        {
+          "name": "has_route_detail",
+          "type": "BOOLEAN",
+          "nulls": 0
+        },
+        {
+          "name": "is_reporting_now",
+          "type": "BOOLEAN",
+          "nulls": 0
+        },
+        {
+          "name": "lineage_note",
+          "type": "VARCHAR",
+          "nulls": 9
+        },
+        {
+          "name": "lineage_source",
+          "type": "VARCHAR",
+          "nulls": 10
+        }
+      ]
+    },
+    "dim_route": {
+      "rows": 162,
+      "columns": [
+        {
+          "name": "route_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "route_name",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "departing_port_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "arriving_port_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "departing_port",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "arriving_port",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "city_pair_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "city_pair_name",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "is_intrastate",
+          "type": "BOOLEAN",
+          "nulls": 0
+        },
+        {
+          "name": "is_capital_to_capital",
+          "type": "BOOLEAN",
+          "nulls": 0
+        },
+        {
+          "name": "first_month_listed",
+          "type": "DATE",
+          "nulls": 0
+        },
+        {
+          "name": "last_month_listed",
+          "type": "DATE",
+          "nulls": 0
+        },
+        {
+          "name": "months_listed",
+          "type": "BIGINT",
+          "nulls": 0,
+          "sum": 30601
+        }
+      ]
+    },
+    "dim_port": {
+      "rows": 45,
+      "columns": [
+        {
+          "name": "port_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "port_name",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "state",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "is_capital_city",
+          "type": "BOOLEAN",
+          "nulls": 0
+        },
+        {
+          "name": "first_month_listed",
+          "type": "DATE",
+          "nulls": 0
+        },
+        {
+          "name": "last_month_listed",
+          "type": "DATE",
+          "nulls": 0
+        }
+      ]
+    },
+    "dim_month": {
+      "rows": 273,
+      "columns": [
+        {
+          "name": "month_key",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 55007961
+        },
+        {
+          "name": "month_start",
+          "type": "DATE",
+          "nulls": 0
+        },
+        {
+          "name": "calendar_year",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 550062
+        },
+        {
+          "name": "month_num",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 1761
+        },
+        {
+          "name": "month_name",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "month_label",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "calendar_quarter",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 678
+        },
+        {
+          "name": "financial_year",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 550197
+        },
+        {
+          "name": "financial_year_label",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "financial_month_num",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 1779
+        },
+        {
+          "name": "days_in_month",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 8309
+        }
+      ]
+    },
+    "dim_comparison_period": {
+      "rows": 3,
+      "columns": [
+        {
+          "name": "period_key",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "period_label",
+          "type": "VARCHAR",
+          "nulls": 0
+        },
+        {
+          "name": "sort_order",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 6
+        },
+        {
+          "name": "first_month_key",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 604724
+        },
+        {
+          "name": "last_month_key",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 606421
+        },
+        {
+          "name": "first_month",
+          "type": "DATE",
+          "nulls": 0
+        },
+        {
+          "name": "last_month",
+          "type": "DATE",
+          "nulls": 0
+        },
+        {
+          "name": "months_in_period",
+          "type": "INTEGER",
+          "nulls": 0,
+          "sum": 204
+        }
+      ]
+    }
+  }
+}
