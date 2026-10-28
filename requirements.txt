@@ -3,3 +3,5 @@ dbt-core>=1.10,<2
 dbt-duckdb>=1.9,<2
 duckdb>=1.1,<2
 pytest>=8.0
+matplotlib>=3.8,<4
+pyyaml>=6
