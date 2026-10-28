@@ -2,7 +2,7 @@
 
 A small, tested **star-schema warehouse** for Australian domestic airline punctuality, built with **dbt-core** on **DuckDB** from the federal government's open data. It's meant to be the trusted layer a BI team (Power BI, Tableau, a notebook) can connect to without re-learning the source's traps.
 
-> **Status: in progress, Part 2 of 5 done** (source and staging; star schema). Next come the metrics and the business answers. See the [plan](#plan).
+> **Status: in progress, Part 3 of 5 done** (source and staging; star schema; metrics and business answers). Next comes the Power BI loading guide. See the [plan](#plan).
 
 ## The business question
 
@@ -64,10 +64,37 @@ Design decisions, each one tested:
 
 **So what for the business:** a travel manager can now ask "how did Qantas, Jetstar and Virgin Australia compare on Sydney–Melbourne in FY2025-26?" or "which Queensland airports have the most cancellations on the listed routes?" with plain joins and sums, and get numbers that reconcile with the airline and national totals. Part 4 exports the same tables for a Power BI model, so the dashboard inherits these rules instead of re-implementing them in DAX.
 
+## What Part 3 found: punctuality hasn't recovered, and on the busiest routes the airline matters more than the route
+
+A tested **metrics layer** sits on the star schema: the three rates are defined once (a dbt macro, as ratios of sums) and reused by five metric models covering national, airline, route, airline-on-route and airport, each compared over three windows: FY2004-05 to FY2018-19, FY2018-19 and the latest 12 months (Oct 2025 to Sep 2026). League tables only rank routes, airports and airlines-on-routes averaging at least 300 scheduled flights a month (about 10 a day). Every figure below comes from the generated [`results/METRICS.md`](results/METRICS.md), which has the full tables.
+
+![National on-time arrivals and cancellations, rolling 12 months](results/charts/national_reliability.png)
+
+- **Punctuality is still below pre-COVID.** 77.9% of flights arrived on time in the latest 12 months, vs 79.4% in FY2018-19 and 82.2% over the 15 years before COVID. It has climbed back from the worst 12 months in the series (67.5%, to Mar 2023).
+- **Cancellations have mostly recovered:** 1.92%, below FY2018-19 (2.05%) but above the long-run 1.50%. They peaked at 11.08% in the 12 months to Oct 2021.
+- **All 5 major airlines are less punctual than in FY2018-19.** Rex fell furthest (80.5% → 72.6%), and QantasLink and Rex now cancel more than they did then. Network figures mix in where each airline flies, though, so the fair test is the same route:
+
+![On-time arrivals by airline on the five busiest city pairs](results/charts/same_route_airlines.png)
+
+- **On the 5 busiest city pairs, the gap between airlines on the same route (4.9 to 29.1 points) is bigger than the gap between the routes (3.2 points).** Brisbane–Melbourne: Qantas 88.4%, Virgin Australia 72.1%, Jetstar 59.3%. Qantas was the most punctual airline on 4 of the 5; on Gold Coast–Sydney it was below the volume floor.
+- **Worst routes:** Launceston–Melbourne (68.0%), Melbourne–Mildura (69.8%) and Hobart–Melbourne (71.5%) ran below the national rate in **12 of 12 months**, so it's not one bad month. Best: Brisbane–Gladstone (85.7%) and Brisbane–Mackay (85.3%).
+- **Late and cancelled are different problems** (rank correlation −0.15). Canberra–Sydney is 9th of 40 for punctuality but cancels the most: 4.99%, about 1 flight in 20. Melbourne–Sydney, the busiest pair, cancels 3.67%.
+- **29 of 38 routes** ranked in both periods are less punctual than in FY2018-19; the biggest falls are regional (Adelaide–Port Lincoln −11.5 points, Melbourne–Mildura −10.8).
+- **Airports:** the least punctual departure points are Sunshine Coast (69.5% on time) and Launceston (70.3%); among the big four, Melbourne (75.3%) and Sydney (76.5%) trail Brisbane (79.6%) and Perth (82.7%).
+
+**So what for a corporate travel team:**
+
+1. **Set the preferred carrier route by route, not network-wide.** On Brisbane–Melbourne the choice of airline is worth 29 points of punctuality; on Melbourne–Sydney it's 6.5. `met_city_pair_brand_period` gives the ranking for every listed route. The data has no fares, so the trade-off against price is the team's call.
+2. **Budget for lateness.** More than 1 flight in 5 isn't on time nationally (it arrives 15+ minutes late or is diverted), and about 3 in 10 aren't on the worst routes (Launceston, Mildura and Hobart to and from Melbourne). Leave a buffer before meetings and connections, or book an earlier flight.
+3. **Treat cancellation-prone routes separately.** On Canberra–Sydney (1 in 20 cancelled), don't book the last flight of the day for must-attend events. A good on-time record doesn't protect against that.
+4. **Benchmark against today, not 2019.** A supplier review that expects pre-COVID punctuality will mark every major airline down. Compare airlines with each other on the same routes, and track the rolling 12-month trend from `met_national_month`.
+
+Caveats: on time means within 15 minutes of schedule (BITRE's definition), so it says nothing about longer delays. Route and airport figures cover only the listed competitive routes (about three quarters of flights). The floor-sensitivity check in the report shows which routes join the rankings at a lower floor (e.g. Hamilton Island–Sydney, 64.5% on time on 1,474 flights).
+
 ## How it's built
 
 ```
-data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──► staging ──► dims + facts ──► (Part 3) metrics ──► Power BI / notebooks
+data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──► staging ──► dims + facts ──► metrics ──► Power BI / notebooks
                     pinned, SHA-256             read as        typed,      one grain
                     checked                     text           grain       per fact
                                                                labelled
@@ -79,7 +106,8 @@ data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──►
 | Source | dbt-duckdb reads the gzip directly; every column as text so typing happens in one place. | [`_bitre__sources.yml`](warehouse/models/staging/_bitre__sources.yml) |
 | Staging | `stg_bitre__otp_monthly`: one row per source row, typed, airline names cleaned through a seed, `row_grain` label, defect flags. Nothing dropped or "fixed". | [`stg_bitre__otp_monthly.sql`](warehouse/models/staging/stg_bitre__otp_monthly.sql), [`airline_names.csv`](warehouse/seeds/airline_names.csv) |
 | Star schema | Two facts (`fct_route_month`, `fct_network_month`), four dimensions, and `audit_national_total` documenting the national-total choice. Seeds hold the port list (state, IATA code) and airline brand lineage with sources. | [`models/marts/`](warehouse/models/marts), [`models/audit/`](warehouse/models/audit), [`ports.csv`](warehouse/seeds/ports.csv), [`airline_brands.csv`](warehouse/seeds/airline_brands.csv) |
-| Tests | 123 dbt tests. **Structural rules fail the build:** unique keys and grains, every fact key in its dimension, facts conserve staging's rows and totals, "All Ports" on both ends or neither, no missing months, route names match ports, cleaned names don't merge two rows, routes within networks, city pairs, the national-total gap bound. **Known source defects warn** (6) and are counted in the profile. Plus 30 pytest tests, including a full rebuild that fails if either committed report is stale. | [`warehouse/tests/`](warehouse/tests), [`tests/`](tests) |
+| Metrics | `otp_metrics.sql` defines the three rates once, as ratios of sums, with missing cancellation counts left out of both sides. `dim_comparison_period` names the windows. Five `met_*` models keep the summed counts next to the rates, so a BI tool can re-aggregate them, plus an `is_ranked` volume floor (`ranking_min_flights_per_month`). `scripts/analyse.py` turns them into the report and charts. | [`macros/otp_metrics.sql`](warehouse/macros/otp_metrics.sql), [`models/metrics/`](warehouse/models/metrics), [`results/METRICS.md`](results/METRICS.md) |
+| Tests | 165 dbt data tests and 1 dbt unit test. **Structural rules fail the build:** unique keys and grains, every fact key in its dimension, facts conserve staging's rows and totals, "All Ports" on both ends or neither, no missing months, route names match ports, cleaned names don't merge two rows, routes within networks, city pairs, the national-total gap bound, every metrics table adds back to its fact in every period, the rolling window is exactly 12 months, and rates stay within 0..1. The unit test feeds hand-worked rows through the city-pair model (ratio of sums vs average of ratios; a missing cancellation count). **Known source defects warn** (6) and are counted in the profile. Plus 39 pytest tests: they recompute rates straight from staging rows, and a full rebuild fails if any committed report or chart is stale. | [`warehouse/tests/`](warehouse/tests), [`tests/`](tests) |
 
 Every model is materialised as a table, not a view, so the `.duckdb` file is self-contained and any client can open it from any folder.
 
@@ -98,7 +126,8 @@ pip install -r requirements.txt           # dbt-core 1.x, dbt-duckdb, duckdb, py
 python scripts/build.py                   # verify snapshot, then dbt build -> data/warehouse.duckdb
 python scripts/profile_source.py          # -> results/SOURCE_PROFILE.md
 python scripts/describe_schema.py         # -> results/STAR_SCHEMA.md
-pytest                                    # 30 tests (rebuilds the warehouse in a temp folder)
+python scripts/analyse.py                 # -> results/METRICS.md + results/charts/*.png
+pytest                                    # 39 tests (rebuilds the warehouse in a temp folder)
 
 python scripts/download_data.py --check   # has BITRE published a newer month?
 python scripts/download_data.py --update  # snapshot it, then rebuild
@@ -110,7 +139,7 @@ Or run dbt directly: `cd warehouse && dbt build`. The profile in `warehouse/prof
 
 1. ✅ **Source, staging, profile.** Snapshot + download script, dbt source, typed and grain-labelled staging, 42 dbt tests, generated source profile.
 2. ✅ **Star schema.** `dim_airline` (brand history with sources), `dim_port` (role-played, with state), `dim_route` (with city pairs), `dim_month` (with Australian FY); `fct_route_month` and `fct_network_month` at their own grains; national total = sum of airline networks, documented in `audit_national_total`; 81 new dbt tests and 21 pytest tests.
-3. **Metrics and analysis.** Tested metric definitions (on-time rate = on-time ÷ flown, as a ratio of sums, not an average of ratios), then the business answers with charts: reliability by airline and route, the post-COVID recovery and the worst routes.
+3. ✅ **Metrics and analysis.** The rates defined once in a macro (ratios of sums), 5 metric models over 3 comparison windows, 42 new dbt data tests and a unit test, 9 new pytest tests; a generated report with 4 charts answering the recovery, airline, route and airport questions.
 4. **Power BI loading guide.** Export to Parquet, relationships (including the role-playing port dimension), DAX measures matching the dbt metrics, and a build checklist. The `.pbix` gets built on Windows.
 5. **CI and write-up.** GitHub Actions runs `dbt build` and `pytest` on every push; final README with recommendations and limitations.
 
@@ -118,8 +147,9 @@ Or run dbt directly: `cd warehouse && dbt build`. The profile in `warehouse/prof
 
 ```
 data/snapshots/        committed source snapshot + SNAPSHOT.json
-scripts/               download_data.py, build.py, profile_source.py, describe_schema.py
-warehouse/             the dbt project: models/staging, models/marts, models/audit, seeds/, tests/
-results/               generated reports
+scripts/               download_data.py, build.py, profile_source.py, describe_schema.py, analyse.py
+warehouse/             the dbt project: models/staging, models/marts, models/metrics, models/audit,
+                       macros/, seeds/, tests/
+results/               generated reports and charts/
 tests/                 pytest
 ```
