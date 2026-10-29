@@ -1,8 +1,18 @@
 # Airline on-time warehouse (dbt-core + DuckDB)
 
+[![CI](https://github.com/nisha1324/airline-ontime-dbt-warehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/nisha1324/airline-ontime-dbt-warehouse/actions/workflows/ci.yml)
+
 A small, tested **star-schema warehouse** for Australian domestic airline punctuality, built with **dbt-core** on **DuckDB** from the federal government's open data. It's meant to be the trusted layer a BI team (Power BI, Tableau, a notebook) can connect to without re-learning the source's traps.
 
-> **Status: in progress, Part 4 of 5 done** (source and staging; star schema; metrics and business answers; Power BI model and guide). Next comes CI and the final write-up. See the [plan](#plan).
+> **Status: complete** (all 5 parts: source and staging; star schema; metrics and business answers; Power BI model and guide; CI). The one open step needs Windows: building the `.pbix` from [`powerbi/POWERBI_GUIDE.md`](powerbi/POWERBI_GUIDE.md) and confirming it against [`powerbi/CHECKS.md`](powerbi/CHECKS.md). See the [limitations](#limitations).
+
+## TL;DR
+
+- **The raw government file can't be summed safely.** It stacks four grains in one table, so a naive `SUM` overstates national flights **3.51×**. The warehouse splits it into two fact tables at their own grain plus four shared dimensions, and 166 dbt tests and 55 pytest tests guard the rules. GitHub Actions reruns all of it on every push.
+- **Punctuality hasn't recovered.** 77.9% of flights arrived on time in the latest 12 months (Oct 2025 – Sep 2026), vs 79.4% in FY2018-19 and 82.2% over the 15 years before COVID. Cancellations have mostly recovered: 1.92%, vs 2.05% in FY2018-19.
+- **On busy routes, the airline matters more than the route.** On the 5 busiest city pairs, airlines on the same route are 4.9 to 29.1 points apart, while the routes themselves are within 3.2 points. On Brisbane–Melbourne, Qantas ran 88.4% on time and Jetstar 59.3%.
+- **The worst routes are consistently bad, and late isn't the same as cancelled.** Launceston–Melbourne (68.0%) and Melbourne–Mildura ran below the national rate in 12 of 12 months. Canberra–Sydney is 9th of 40 for punctuality but cancels the most (4.99%).
+- **A Power BI model that can be checked.** 7 Parquet files, 31 DAX measures written to the dbt rules, and 7 check queries with expected answers. The cancellation trap they catch: a plain `DIVIDE` gives Jetstar's FY2006-07 route cancellation rate as 0.46% instead of 0.57%.
 
 ## The business question
 
@@ -106,10 +116,47 @@ What isn't done yet: the DAX hasn't been run inside Power BI, because there's no
 
 **So what for the business:** the dashboard inherits the warehouse's rules instead of re-implementing them, and anyone can confirm it does in a few minutes, by running the check queries. A travel manager reading "Qantas 88.4% vs Jetstar 59.3% on Brisbane–Melbourne" in Power BI sees the same number as the SQL report, so the booking-policy discussion is about the decision, not about whose figure is right.
 
+## What Part 5 added: CI on every push
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request, in about a minute:
+
+1. Installs the exact package versions from [`requirements-lock.txt`](requirements-lock.txt), the ones the committed outputs were made with. `requirements.txt` keeps the looser ranges for local use.
+2. Runs `dbt build`, which first checks the snapshot's SHA-256. Any structural test failure fails the job; the 6 known source defects only warn. The step summary lists the dbt results by status.
+3. Reruns every generator from [How to run](#how-to-run) and fails if any committed report, chart, Parquet file or check value changes. The charts are compared byte for byte, which is why the versions are pinned.
+4. Runs `pytest`, which rebuilds the warehouse in a temp folder and cross-checks it against staging.
+
+**So what for the business:** when BITRE publishes a new month, refreshing the snapshot is a one-line change, and CI says whether the numbers still reconcile before anyone sees a dashboard. A source change that breaks a rule (a new grain, a national-total gap above the 3% bound, a missing month) turns the badge red instead of reaching a report.
+
+## Recommendations, ranked
+
+For a corporate travel team (the first four) and the data team that runs the warehouse (the last two). The evidence is in [`results/METRICS.md`](results/METRICS.md) and [`results/SOURCE_PROFILE.md`](results/SOURCE_PROFILE.md).
+
+| # | Recommendation | Evidence | Owner |
+|---|---|---|---|
+| 1 | **Pick the preferred airline route by route, not network-wide.** It's the biggest lever in the data. | On the 5 busiest city pairs, same-route airline gaps of 4.9 to 29.1 points vs 3.2 points between routes; Brisbane–Melbourne: Qantas 88.4%, Jetstar 59.3%. | Travel manager |
+| 2 | **Build lateness into travel policy.** Leave a buffer before meetings and connections, or book an earlier flight, especially on the worst routes. | Nationally, 22% of flights flown in the latest 12 months arrived 15+ minutes late or were diverted; on Launceston–Melbourne it's 32%, and that route was below national in 12 of 12 months. | Travel policy owner |
+| 3 | **Treat cancellation-prone routes separately.** For must-attend events, don't book the last flight of the day. | Canberra–Sydney cancels 4.99% (about 1 in 20) while ranking 9th of 40 for punctuality; late and cancelled are barely related (rank correlation −0.15). | Travel manager |
+| 4 | **Review suppliers against today's peers, not 2019.** Compare airlines on the same routes and track the rolling 12-month trend. | All 5 major brands are less punctual than in FY2018-19, so a 2019 benchmark marks every airline down. | Procurement |
+| 5 | **Report from the warehouse, never the raw CSV.** Confirm the Power BI build with the check queries before publishing it. | A naive `SUM` over the raw file is 3.51× the real national flights; a plain `DIVIDE` understates Jetstar's FY2006-07 route cancellations (0.46% vs 0.57%). | BI lead |
+| 6 | **Refresh monthly and let CI gate it.** Run `download_data.py --check`, then `--update`, and merge only when CI is green. | data.gov.au replaces the file in place every month; the national-total and conservation tests catch a source change before it reaches a report. | Data engineer |
+
+The data has no fares, so the trade-off between punctuality and price (recommendation 1) is the travel team's call.
+
+## Limitations
+
+- **Listed routes only.** Route and airport figures cover the competitive routes BITRE publishes (8,000+ passengers a month, two or more airlines), about three quarters of national flights. Airline and national figures use the whole networks.
+- **"On time" means within 15 minutes** of schedule (BITRE's definition). The data has no delay minutes, delay causes, passenger numbers or fares.
+- **Network figures mix route choice into airline performance.** An airline that flies more hard routes looks worse network-wide, so airline comparisons for booking decisions should use the same-route tables.
+- **The national total is a choice.** It's the sum of the airline networks, not BITRE's published national row. They differ by at most 2.4% of flights and 0.19 points of on-time rate, and a test fails the build if a future release widens the gap past 3% or 0.5 points.
+- **The Rex lineage is inferred** (Regional Express → Rex Airlines, Jul 2021, from identical route lists), not from a published source. Skytrans and Skytrans Australia are deliberately not linked.
+- **Known source defects are kept, not fixed:** 316 route rows with no cancellation count (left out of the cancellation rate on both sides), 56 rows with fractional flight counts, and a few dozen rows where flights flown ≠ on time + delayed. They're flagged in staging and counted in the profile.
+- **The DAX hasn't run in Power BI yet.** It's checked statically and against expected values, but the first real test is building the `.pbix` on Windows and running the check queries.
+- **A snapshot, not a live feed.** The figures are from the snapshot published 2026-10-22 (data to Sep 2026); refreshing it is a one-line command.
+
 ## How it's built
 
 ```
-data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──► staging ──► dims + facts ──► metrics ──► notebooks
+data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──► staging ──► dims + facts ──► metrics ──► reports, charts
                                                                                    └──► Parquet ──► Power BI
                     pinned, SHA-256             read as        typed,      one grain
                     checked                     text           grain       per fact
@@ -125,6 +172,7 @@ data.gov.au CSV ──► data/snapshots/*.csv.gz ──► dbt source ──►
 | Metrics | `otp_metrics.sql` defines the three rates once, as ratios of sums, with missing cancellation counts left out of both sides. `dim_comparison_period` names the windows. Five `met_*` models keep the summed counts next to the rates, so a BI tool can re-aggregate them, plus an `is_ranked` volume floor (`ranking_min_flights_per_month`). `scripts/analyse.py` turns them into the report and charts. | [`macros/otp_metrics.sql`](warehouse/macros/otp_metrics.sql), [`models/metrics/`](warehouse/models/metrics), [`results/METRICS.md`](results/METRICS.md) |
 | Tests | 165 dbt data tests and 1 dbt unit test. **Structural rules fail the build:** unique keys and grains, every fact key in its dimension, facts conserve staging's rows and totals, "All Ports" on both ends or neither, no missing months, route names match ports, cleaned names don't merge two rows, routes within networks, city pairs, the national-total gap bound, every metrics table adds back to its fact in every period, the rolling window is exactly 12 months, and rates stay within 0..1. The unit test feeds hand-worked rows through the city-pair model (ratio of sums vs average of ratios; a missing cancellation count). **Known source defects warn** (6) and are counted in the profile. Plus 55 pytest tests: they recompute rates straight from staging rows, check the Power BI files against the warehouse and the dbt metrics, and a full rebuild fails if any committed report, chart, Parquet file or check value is stale. | [`warehouse/tests/`](warehouse/tests), [`tests/`](tests) |
 | Power BI | The star schema exported to Parquet and checked on read-back, a manifest, 31 DAX measures matching the dbt metrics, 7 check queries with expected values, and the build guide. | [`powerbi/`](powerbi), [`export_powerbi.py`](scripts/export_powerbi.py), [`powerbi_checks.py`](scripts/powerbi_checks.py) |
+| CI | GitHub Actions on every push: pinned installs, `dbt build`, every generator rerun with a check that no committed file changed, then `pytest`. | [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`requirements-lock.txt`](requirements-lock.txt) |
 
 Every model is materialised as a table, not a view, so the `.duckdb` file is self-contained and any client can open it from any folder.
 
@@ -139,6 +187,7 @@ BITRE's definitions: a flight is **on time** if it arrives at (or departs) the g
 ```bash
 uv venv && source .venv/bin/activate     # or: python -m venv .venv
 pip install -r requirements.txt           # dbt-core 1.x, dbt-duckdb, duckdb, pytest
+                                          # (or requirements-lock.txt for CI's exact versions)
 
 python scripts/build.py                   # verify snapshot, then dbt build -> data/warehouse.duckdb
 python scripts/profile_source.py          # -> results/SOURCE_PROFILE.md
@@ -160,7 +209,7 @@ Or run dbt directly: `cd warehouse && dbt build`. The profile in `warehouse/prof
 2. ✅ **Star schema.** `dim_airline` (brand history with sources), `dim_port` (role-played, with state), `dim_route` (with city pairs), `dim_month` (with Australian FY); `fct_route_month` and `fct_network_month` at their own grains; national total = sum of airline networks, documented in `audit_national_total`; 81 new dbt tests and 21 pytest tests.
 3. ✅ **Metrics and analysis.** The rates defined once in a macro (ratios of sums), 5 metric models over 3 comparison windows, 42 new dbt data tests and a unit test, 9 new pytest tests; a generated report with 4 charts answering the recovery, airline, route and airport questions.
 4. ✅ **Power BI model and guide.** Parquet export checked on read-back, 7 relationships (the port dimension loaded once per role), 31 DAX measures matching the dbt metrics, 7 check queries with tested expected values, a build guide with 4 report pages; 16 new pytest tests. The `.pbix` and screenshots get built on Windows.
-5. **CI and write-up.** GitHub Actions runs `dbt build` and `pytest` on every push; final README with recommendations and limitations.
+5. ✅ **CI and write-up.** GitHub Actions on every push (pinned versions, `dbt build`, a no-changes check after rerunning every generator, `pytest`); TL;DR, ranked recommendations and limitations.
 
 ## Repo layout
 
@@ -173,4 +222,6 @@ warehouse/             the dbt project: models/staging, models/marts, models/met
 results/               generated reports and charts/
 powerbi/               Parquet export + manifest, measures.dax, CHECKS.md, POWERBI_GUIDE.md
 tests/                 pytest
+.github/workflows/     ci.yml
+requirements.txt       version ranges; requirements-lock.txt has the exact versions CI uses
 ```
